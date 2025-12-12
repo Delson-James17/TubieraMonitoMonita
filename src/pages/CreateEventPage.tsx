@@ -153,35 +153,95 @@ export default function CreateEventPage() {
           </div>
         )}
 
-        {eventLink && (
-          <div className="text-center">
-            <h4 className="mt-2 text-white">🎉 Event Created!</h4>
+{eventLink && (
+  <div
+    style={{
+      marginTop: 20,
+      padding: "16px",
+      borderRadius: "14px",
+      background: "rgba(0,0,0,0.45)",
+      border: "1px solid rgba(255,255,255,0.18)",
+    }}
+  >
+    <h4 className="text-white fw-bold mb-2">
+      🎉 Event Created Successfully!
+    </h4>
 
-            <p className="small text-white-50">
-              Share this link with participants
-            </p>
+    <p className="text-white-50 small mb-3">
+      Share this link with participants
+    </p>
 
-            <a
-              href={eventLink}
-              target="_blank"
-              rel="noreferrer"
-              className="text-info d-block mb-3 text-break"
-            >
-              {eventLink}
-            </a>
+    {/* 🔗 LINK BOX */}
+    <div
+      style={{
+        padding: "10px 12px",
+        borderRadius: "10px",
+        background: "rgba(255,255,255,0.08)",
+        border: "1px solid rgba(255,255,255,0.2)",
+        marginBottom: 14,
+        wordBreak: "break-all",
+      }}
+    >
+      <a
+        href={eventLink}
+        target="_blank"
+        rel="noreferrer"
+        style={{
+          color: "#93c5fd",
+          fontSize: "0.85rem",
+          fontWeight: 500,
+          textDecoration: "none",
+        }}
+      >
+        {eventLink}
+      </a>
+    </div>
 
-            <QRCodeCanvas
-              value={eventLink}
-              size={180}
-              bgColor="#ffffff"
-              fgColor="#d90429"
-            />
+    {/* 📋 COPY BUTTON */}
+    <button
+      className="auth-button"
+      style={{
+        height: 40,
+        fontSize: "0.85rem",
+        marginBottom: 16,
+      }}
+      onClick={() => {
+        navigator.clipboard.writeText(eventLink);
+        alert("Link copied!");
+      }}
+    >
+      📋 Copy Link
+    </button>
 
-            <p className="small text-white-50 mt-3">
-              Scan the QR code to join 🎄
-            </p>
-          </div>
-        )}
+    {/* 📷 QR SECTION */}
+    <div
+      style={{
+        marginTop: 12,
+        padding: 14,
+        borderRadius: 12,
+        background: "#ffffff",
+        display: "inline-block",
+      }}
+    >
+      <QRCodeCanvas
+        value={eventLink}
+        size={180}
+        bgColor="#ffffff"
+        fgColor="#111827"
+      />
+    </div>
+
+    <p
+      style={{
+        marginTop: 10,
+        fontSize: "0.8rem",
+        color: "#c7d2fe",
+      }}
+    >
+      📱 Scan the QR code to join
+    </p>
+  </div>
+)}
       </div>
     </div>
   );
