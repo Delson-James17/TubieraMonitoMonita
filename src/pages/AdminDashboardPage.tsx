@@ -34,7 +34,9 @@ export default function AdminDashboardPage() {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Load events
+  // ===============================
+  // LOAD EVENTS
+  // ===============================
   useEffect(() => {
     if (!user) return;
 
@@ -46,7 +48,9 @@ export default function AdminDashboardPage() {
       .then(({ data }) => setEvents(data ?? []));
   }, [user]);
 
-  // Load participants
+  // ===============================
+  // LOAD PARTICIPANTS
+  // ===============================
   useEffect(() => {
     if (!selectedEventId) return;
     loadParticipants(selectedEventId);
@@ -62,6 +66,9 @@ export default function AdminDashboardPage() {
     setParticipants((data as Participant[]) ?? []);
   };
 
+  // ===============================
+  // INITIAL DRAW
+  // ===============================
   const runDraw = async () => {
     if (!selectedEventId || participants.length < 2) return;
 
@@ -90,7 +97,54 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // 🔒 Not logged in
+  // ===============================
+  // 🔄 RE-DRAW / RE-SHUFFLE
+  // ===============================
+  const reshuffleDraw = async () => {
+    if (!selectedEventId || participants.length < 2) return;
+
+    const confirmed = window.confirm(
+      "⚠️ This will RESET all assignments and re-draw.\nAre you sure?"
+    );
+
+    if (!confirmed) return;
+
+    setLoading(true);
+
+    try {
+      // 1️⃣ Clear assignments
+      await supabase
+        .from("participants")
+        .update({ assigned_to: null })
+        .eq("event_id", selectedEventId);
+
+      // 2️⃣ Generate new derangement
+      const names = participants.map((p) => p.name);
+      const assigned = generateDerangement(names);
+
+      // 3️⃣ Apply new assignments
+      for (let i = 0; i < participants.length; i++) {
+        await supabase
+          .from("participants")
+          .update({ assigned_to: assigned[i] })
+          .eq("id", participants[i].id);
+      }
+
+      await loadParticipants(selectedEventId);
+      alert("🔄 Re-Draw completed!");
+    } catch (err) {
+      alert(
+        "Error during re-draw: " +
+          (err instanceof Error ? err.message : "Unknown error")
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ===============================
+  // NOT LOGGED IN
+  // ===============================
   if (!user) {
     return (
       <div className="auth-root">
@@ -103,6 +157,9 @@ export default function AdminDashboardPage() {
     );
   }
 
+  // ===============================
+  // UI
+  // ===============================
   return (
     <div className="auth-root">
       {/* ❄ Snowflakes */}
@@ -179,18 +236,39 @@ export default function AdminDashboardPage() {
             <div className="d-flex justify-content-between align-items-center mb-3">
               <h4 className="text-white">Participants</h4>
 
-              <button
-                className="auth-button"
-                onClick={runDraw}
-                disabled={
-                  !selectedEventId ||
-                  participants.length < 2 ||
-                  loading ||
-                  participants.every((p) => p.assigned_to)
-                }
-              >
-                {loading ? "Running…" : "Run Perfect Draw 🎁"}
-              </button>
+              <div className="d-flex gap-2">
+                {/* FIRST DRAW */}
+                <button
+                  className="auth-button"
+                  onClick={runDraw}
+                  disabled={
+                    !selectedEventId ||
+                    participants.length < 2 ||
+                    loading ||
+                    participants.some((p) => p.assigned_to)
+                  }
+                >
+                  🎁 Run Draw
+                </button>
+
+                {/* RE-DRAW */}
+                <button
+                  className="auth-button"
+                  style={{
+                    background:
+                      "linear-gradient(135deg,#f59e0b,#d97706)",
+                  }}
+                  onClick={reshuffleDraw}
+                  disabled={
+                    !selectedEventId ||
+                    participants.length < 2 ||
+                    loading ||
+                    participants.every((p) => !p.assigned_to)
+                  }
+                >
+                  🔄 Re-Draw
+                </button>
+              </div>
             </div>
 
             {!selectedEventId && (
@@ -208,7 +286,8 @@ export default function AdminDashboardPage() {
                       padding: "12px 14px",
                       borderRadius: "12px",
                       background: "rgba(0,0,0,0.35)",
-                      border: "1px solid rgba(255,255,255,0.15)",
+                      border:
+                        "1px solid rgba(255,255,255,0.15)",
                       color: "white",
                       display: "flex",
                       justifyContent: "space-between",
