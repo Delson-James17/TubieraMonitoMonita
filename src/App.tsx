@@ -7,6 +7,7 @@ import AdminDashboardPage from "./pages/AdminDashboardPage";
 import EventPage from "./pages/EventPage";
 import RevealPage from "./pages/RevealPage";
 import AdminRoute from "./components/AdminRoute";
+import ProtectedRoute from "./components/ProtectedRoute";
 import Navbar from "./components/AppHeader";
 
 export default function App() {
@@ -16,14 +17,22 @@ export default function App() {
         <Navbar />
 
         <Routes>
-          {/* ✅ Redirect root to login */}
+          {/* 🔁 Root goes to login */}
           <Route path="/" element={<Navigate to="/auth" replace />} />
 
           <Route path="/auth" element={<AuthPage />} />
 
-          {/* Optional: protect create-event page later */}
-          <Route path="/create" element={<CreateEventPage />} />
+          {/* 🔒 Protected create event */}
+          <Route
+            path="/create"
+            element={
+              <ProtectedRoute>
+                <CreateEventPage />
+              </ProtectedRoute>
+            }
+          />
 
+          {/* 🌍 Public pages */}
           <Route path="/event/:id" element={<EventPage />} />
           <Route path="/reveal/:eventId/:name" element={<RevealPage />} />
 

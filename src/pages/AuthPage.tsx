@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
@@ -13,7 +13,7 @@ const generateSnowflakes = () =>
   }));
 
 export default function AuthPage() {
-  const { login, register } = useAuth();
+  const { login, register, user } = useAuth();
   const navigate = useNavigate();
 
   const [snowflakes] = useState(generateSnowflakes);
@@ -21,8 +21,14 @@ export default function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+
+  // 🔐 Redirect logged-in users away from login page
+  useEffect(() => {
+    if (user) {
+      navigate("/create", { replace: true });
+    }
+  }, [user, navigate]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -31,10 +37,10 @@ export default function AuthPage() {
     try {
       if (mode === "login") {
         await login(email, password);
-        navigate("/");
+        navigate("/create", { replace: true });
       } else {
         await register(email, password);
-        setShowConfirmModal(true); // ✅ show modal instead
+        setShowConfirmModal(true);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Authentication failed");
@@ -97,7 +103,9 @@ export default function AuthPage() {
 
         <button
           className="auth-switch"
-          onClick={() => setMode(mode === "login" ? "register" : "login")}
+          onClick={() =>
+            setMode(mode === "login" ? "register" : "login")
+          }
         >
           {mode === "login"
             ? "No account yet? Register instead"
