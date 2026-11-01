@@ -1,309 +1,65 @@
-import { useEffect, useState } from "react";
-import { supabase } from "../lib/supabaseClient";
-import { useAuth } from "../context/useAuth";
-import { generateDerangement } from "../utils/derangement";
-
-/** ❄ Generate snowflakes ONCE */
-const generateSnowflakes = () =>
-  [...Array(25)].map(() => ({
-    left: `${Math.random() * 100}%`,
-    duration: `${6 + Math.random() * 8}s`,
-    delay: `${Math.random() * 6}s`,
-    size: `${12 + Math.random() * 18}px`,
-  }));
-
-interface Event {
-  id: string;
-  title: string;
-  created_at: string;
-  expires_at: string | null;
-}
-
-interface Participant {
-  id: string;
-  name: string;
-  assigned_to: string | null;
-}
-
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { supabase } from '../lib/supabaseClient';
+import { useAuth } from '../context/useAuth';
+import { generateDerangement } from '../utils/derangement';
+interface GiftEvent { id: string; title: string; created_at: string; expires_at: string | null }
+interface Participant { id: string; name: string; assigned_to: string | null }
 export default function AdminDashboardPage() {
   const { user } = useAuth();
-  const [snowflakes] = useState(generateSnowflakes);
-
-  const [events, setEvents] = useState<Event[]>([]);
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [events, setEvents] = useState<GiftEvent[]>([]);
+  const [selectedEventId, setSelectedEventId] = useState('');
   const [participants, setParticipants] = useState<Participant[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  // ===============================
-  // LOAD EVENTS
-  // ===============================
+  const [loadingEvents, setLoadingEvents] = useState(true);
+  const [loadingPeople, setLoadingPeople] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   useEffect(() => {
+    let active = true;
     if (!user) return;
-
-    supabase
-      .from("events")
-      .select("*")
-      .eq("created_by", user.id)
-      .order("created_at", { ascending: false })
-      .then(({ data }) => setEvents(data ?? []));
+    void supabase.from('events').select('id,title,created_at,expires_at').eq('created_by', user.id).order('created_at', { ascending: false }).then(({ data, error }) => {
+      if (!active) return;
+      if (error) setError('Could not load your events. Refresh to try again.');
+      else { setEvents(data ?? []); setSelectedEventId(data?.[0]?.id ?? ''); }
+      setLoadingEvents(false);
+    }); return () => { active = false; };
   }, [user]);
-
-  // ===============================
-  // LOAD PARTICIPANTS
-  // ===============================
   useEffect(() => {
+    let active = true;
     if (!selectedEventId) return;
-    loadParticipants(selectedEventId);
+    void supabase.from('participants').select('id,name,assigned_to').eq('event_id', selectedEventId).order('name').then(({ data, error }) => {
+      if (!active) return;
+      if (error) setError('Could not load participants. Select the event again to retry.');
+      else setParticipants(data ?? []);
+      setLoadingPeople(false);
+    }); return () => { active = false; };
   }, [selectedEventId]);
-
-  const loadParticipants = async (eventId: string) => {
-    const { data } = await supabase
-      .from("participants")
-      .select("id,name,assigned_to")
-      .eq("event_id", eventId)
-      .order("name");
-
-    setParticipants((data as Participant[]) ?? []);
-  };
-
-  // ===============================
-  // INITIAL DRAW
-  // ===============================
+  const selected = events.find(e => e.id === selectedEventId);
+  const expired = !!selected?.expires_at && new Date(selected.expires_at).getTime() <= Date.now();
+  const hasDraw = participants.some(p => p.assigned_to);
   const runDraw = async () => {
-    if (!selectedEventId || participants.length < 2) return;
-
-    setLoading(true);
-
+    if (busy || loadingPeople || participants.length < 2 || expired) return;
+    if (hasDraw && !window.confirm('Run a new draw? This will change existing recipients, including those already revealed.')) return;
+    setBusy(true); setError(''); setNotice('');
     try {
-      const names = participants.map((p) => p.name);
-      const assigned = generateDerangement(names);
-
+      const assignments = generateDerangement(participants.map(p => p.name));
       for (let i = 0; i < participants.length; i++) {
-        await supabase
-          .from("participants")
-          .update({ assigned_to: assigned[i] })
-          .eq("id", participants[i].id);
+        const { data, error } = await supabase.from('participants').update({ assigned_to: assignments[i] }).eq('id', participants[i].id).eq('event_id', selectedEventId).select('id');
+        if (error || !data?.length) throw new Error('Draw could not be completed. Some assignments may have changed. Run the draw again before sharing results.');
       }
-
-      await loadParticipants(selectedEventId);
-      alert("🎁 Draw completed!");
-    } catch (err) {
-      alert(
-        "Error during draw: " +
-          (err instanceof Error ? err.message : "Unknown error")
-      );
-    } finally {
-      setLoading(false);
-    }
+      setParticipants(participants.map((p, i) => ({ ...p, assigned_to: assignments[i] })));
+      setNotice('Draw complete! Everyone has a recipient. You can now share your event.');
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not complete the draw. Please try again.'); }
+    finally { setBusy(false); }
   };
-
-  // ===============================
-  // 🔄 RE-DRAW / RE-SHUFFLE
-  // ===============================
-  const reshuffleDraw = async () => {
-    if (!selectedEventId || participants.length < 2) return;
-
-    const confirmed = window.confirm(
-      "⚠️ This will RESET all assignments and re-draw.\nAre you sure?"
-    );
-
-    if (!confirmed) return;
-
-    setLoading(true);
-
-    try {
-      // 1️⃣ Clear assignments
-      await supabase
-        .from("participants")
-        .update({ assigned_to: null })
-        .eq("event_id", selectedEventId);
-
-      // 2️⃣ Generate new derangement
-      const names = participants.map((p) => p.name);
-      const assigned = generateDerangement(names);
-
-      // 3️⃣ Apply new assignments
-      for (let i = 0; i < participants.length; i++) {
-        await supabase
-          .from("participants")
-          .update({ assigned_to: assigned[i] })
-          .eq("id", participants[i].id);
-      }
-
-      await loadParticipants(selectedEventId);
-      alert("🔄 Re-Draw completed!");
-    } catch (err) {
-      alert(
-        "Error during re-draw: " +
-          (err instanceof Error ? err.message : "Unknown error")
-      );
-    } finally {
-      setLoading(false);
-    }
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(`${window.location.origin}/event/${selectedEventId}`); setNotice('Invite link copied!'); }
+    catch { setError('Copy is unavailable. Open the event and copy its address.'); }
   };
-
-  // ===============================
-  // NOT LOGGED IN
-  // ===============================
-  if (!user) {
-    return (
-      <div className="auth-root">
-        <div className="auth-box text-center">
-          <p className="text-white">
-            Please log in to access the admin dashboard.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // ===============================
-  // UI
-  // ===============================
-  return (
-    <div className="auth-root">
-      {/* ❄ Snowflakes */}
-      {snowflakes.map((flake, idx) => (
-        <div
-          key={idx}
-          className="snowflake"
-          style={{
-            left: flake.left,
-            fontSize: flake.size,
-            animationDuration: flake.duration,
-            animationDelay: flake.delay,
-          }}
-        >
-          ❄
-        </div>
-      ))}
-
-      {/* 🎅 Admin Dashboard */}
-      <div className="auth-box" style={{ maxWidth: 900 }}>
-        <h2 className="auth-title">🎅 Admin Dashboard</h2>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 2fr",
-            gap: "20px",
-          }}
-        >
-          {/* 📦 EVENTS */}
-          <div>
-            <h4 className="text-white mb-3">Your Events</h4>
-
-            <div className="d-flex flex-column gap-2">
-              {events.map((e) => {
-                const expired =
-                  e.expires_at &&
-                  new Date(e.expires_at) < new Date();
-
-                return (
-                  <button
-                    key={e.id}
-                    className="auth-button"
-                    style={{
-                      background:
-                        selectedEventId === e.id
-                          ? "linear-gradient(135deg,#2563eb,#1d4ed8)"
-                          : "rgba(0,0,0,0.35)",
-                      textAlign: "left",
-                    }}
-                    onClick={() => setSelectedEventId(e.id)}
-                  >
-                    <div className="d-flex justify-content-between">
-                      <span>{e.title}</span>
-                      {expired && <span>⏳</span>}
-                    </div>
-                    <small className="opacity-75">
-                      {new Date(e.created_at).toLocaleDateString()}
-                    </small>
-                  </button>
-                );
-              })}
-
-              {events.length === 0 && (
-                <p className="text-white-50">
-                  No events created yet.
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* 🎁 PARTICIPANTS */}
-          <div>
-            <div className="d-flex justify-content-between align-items-center mb-3">
-              <h4 className="text-white">Participants</h4>
-
-              <div className="d-flex gap-2">
-                {/* FIRST DRAW */}
-                <button
-                  className="auth-button"
-                  onClick={runDraw}
-                  disabled={
-                    !selectedEventId ||
-                    participants.length < 2 ||
-                    loading ||
-                    participants.some((p) => p.assigned_to)
-                  }
-                >
-                  🎁 Run Draw
-                </button>
-
-                {/* RE-DRAW */}
-                <button
-                  className="auth-button"
-                  style={{
-                    background:
-                      "linear-gradient(135deg,#f59e0b,#d97706)",
-                  }}
-                  onClick={reshuffleDraw}
-                  disabled={
-                    !selectedEventId ||
-                    participants.length < 2 ||
-                    loading ||
-                    participants.every((p) => !p.assigned_to)
-                  }
-                >
-                  🔄 Re-Draw
-                </button>
-              </div>
-            </div>
-
-            {!selectedEventId && (
-              <p className="text-white-50">
-                Select an event to view participants.
-              </p>
-            )}
-
-            {selectedEventId && (
-              <div className="d-flex flex-column gap-2">
-                {participants.map((p) => (
-                  <div
-                    key={p.id}
-                    style={{
-                      padding: "12px 14px",
-                      borderRadius: "12px",
-                      background: "rgba(0,0,0,0.35)",
-                      border:
-                        "1px solid rgba(255,255,255,0.15)",
-                      color: "white",
-                      display: "flex",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <span>{p.name}</span>
-                    <strong className="text-warning">
-                      {p.assigned_to ?? "—"}
-                    </strong>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  return <main className="auth-root"><section className="auth-box" style={{ maxWidth: 1040 }}><p className="eyebrow">The joy starts here</p><h1 className="auth-title">Your gift exchanges</h1><p className="intro">Manage your people, make the draw, and share a little magic.</p>
+    {error && <p className="auth-error" role="alert">{error}</p>}{notice && <p className="notice" role="status">{notice}</p>}
+    <div className="dashboard-grid"><aside><div className="actions"><Link className="button" to="/create">+ New exchange</Link></div>{loadingEvents ? <p role="status">Loading events…</p> : events.length === 0 ? <p className="empty">Your first exchange is waiting to happen.</p> : <div className="participant-list">{events.map(e => <button className={`auth-button ${selectedEventId === e.id ? '' : 'secondary'}`} style={{ textAlign: 'left', flexDirection: 'column', alignItems: 'flex-start' }} key={e.id} disabled={busy} aria-pressed={selectedEventId === e.id} onClick={() => { if (selectedEventId === e.id) return; setLoadingPeople(true); setParticipants([]); setSelectedEventId(e.id); setError(''); setNotice(''); }}><span>{e.title}</span><small>{new Date(e.created_at).toLocaleDateString()} · {e.expires_at && new Date(e.expires_at).getTime() <= Date.now() ? 'Expired' : 'Open'}</small></button>)}</div>}</aside>
+    <div>{selected ? <><h2>{selected.title}</h2><p className="helper">{participants.length} participants · {expired ? 'Event expired' : hasDraw ? 'Assignments available' : 'Ready for a draw'}</p><div className="actions"><button className="auth-button" onClick={runDraw} disabled={busy || loadingPeople || participants.length < 2 || expired}>{busy ? 'Drawing…' : hasDraw ? 'Re-draw names' : 'Run the draw'}</button><button className="auth-button secondary" disabled={busy} onClick={copy}>Copy invite</button><Link className="button secondary" to={`/event/${selectedEventId}`}>Open event</Link></div><p className="helper" style={{ marginBottom: 16 }}>Organizer view: assignments are visible below.</p>{loadingPeople ? <p role="status">Loading participants…</p> : <div className="participant-list">{participants.map(p => <div className="participant-row" key={p.id}><span>{p.name}</span><strong>{p.assigned_to ?? 'Not drawn'}</strong></div>)}{participants.length === 0 && <p className="empty">No participants in this event.</p>}</div>}</> : <p className="empty">Create an exchange to get started.</p>}</div></div>
+  </section></main>;
 }

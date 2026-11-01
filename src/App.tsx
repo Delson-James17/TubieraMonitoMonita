@@ -21,6 +21,8 @@ export default function App() {
           <Route path="/" element={<Navigate to="/auth" replace />} />
 
           <Route path="/auth" element={<AuthPage />} />
+          <Route path="/login" element={<Navigate to="/auth" replace />} />
+          <Route path="*" element={<Navigate to="/auth" replace />} />
 
           {/* 🔒 Protected create event */}
           <Route

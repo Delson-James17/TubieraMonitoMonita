@@ -1,58 +1,17 @@
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "../context/useAuth";
-
+import { useState } from 'react';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/useAuth';
 export default function AppHeader() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
   if (!user) return null;
-
   const handleLogout = async () => {
-    await logout();
-    navigate("/login"); // 👈 redirect after logout
+    setBusy(true); setError('');
+    try { await logout(); navigate('/auth', { replace: true }); }
+    catch { setError('Sign out failed. Please try again.'); }
+    finally { setBusy(false); }
   };
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        top: 16,
-        left: 24,
-        right: 24,
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        zIndex: 50,
-      }}
-    >
-      {/* LEFT */}
-      <button
-        onClick={() => navigate("/admin")}
-        style={{
-          background: "transparent",
-          border: "none",
-          color: "#9fb7ff",
-          fontWeight: 600,
-          cursor: "pointer",
-        }}
-      >
-        🎄 Admin Dashboard
-      </button>
-
-      {/* RIGHT */}
-      <button
-        onClick={handleLogout}
-        style={{
-          background: "rgba(255,255,255,0.1)",
-          border: "1px solid rgba(255,255,255,0.2)",
-          color: "white",
-          padding: "6px 14px",
-          borderRadius: "10px",
-          cursor: "pointer",
-        }}
-      >
-        Logout
-      </button>
-    </div>
-  );
+  return <header className="app-header"><Link className="brand" to="/create">🎁 Monito Monita</Link><nav aria-label="Main navigation"><NavLink to="/create">Create event</NavLink><NavLink to="/admin">My events</NavLink><button disabled={busy} onClick={handleLogout}>{busy ? 'Signing out…' : 'Sign out'}</button></nav>{error && <span role="alert">{error}</span>}</header>;
 }

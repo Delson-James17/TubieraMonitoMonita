@@ -1,5 +1,23 @@
 # 🎄 Secret Santa Draw App
 
+## UI refresh
+
+The app now includes a responsive forest-green theme, scrolling mobile layouts,
+accessible form labels, participant search, live participant counts, unique-name
+validation, password visibility, and invite copying from the event dashboard.
+Participants can reveal and hide their recipient. Event creation converts local
+expiration dates to UTC; both public pages check expiration.
+
+Run `npm install`, then `npm run dev`. Validate with `npm run build` and `npm run lint`.
+Configure `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in your local `.env`.
+
+Backend limitations: the existing schema uses public name-based reveal links;
+these do not verify participant identity. Supabase row-level security must enforce
+organizer write access. The browser expiration check is a UI rule; database
+policies must enforce it for direct API access. Draw updates use separate requests,
+so an interrupted draw can leave partial assignments. Use a transactional database
+function for atomic draws before relying on this for sensitive exchanges.
+
 A modern **Secret Santa web application** built with **React, TypeScript, Supabase, and Bootstrap**.  
 It allows admins to create Secret Santa events, share them via link or QR code, and lets participants reveal their assigned recipient — **without needing an account**.
 

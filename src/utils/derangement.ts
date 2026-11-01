@@ -1,7 +1,7 @@
 export function generateDerangement<T>(items: T[]): T[] {
   const n = items.length;
-  if (n === 1) {
-    throw new Error("Cannot create derangement for 1 participant.");
+  if (n < 2) {
+    throw new Error("At least two participants are required.");
   }
   if (n === 2) {
     // For 2 participants, just swap

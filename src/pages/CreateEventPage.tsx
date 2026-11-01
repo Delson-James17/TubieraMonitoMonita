@@ -1,248 +1,54 @@
-import { useState } from "react";
-import { supabase } from "../lib/supabaseClient";
-import { useAuth } from "../context/useAuth";
-import { QRCodeCanvas } from "qrcode.react";
-
-/** ❄ Generate snowflakes ONCE */
-const generateSnowflakes = () =>
-  [...Array(30)].map(() => ({
-    left: `${Math.random() * 100}%`,
-    duration: `${6 + Math.random() * 8}s`,
-    delay: `${Math.random() * 6}s`,
-    size: `${12 + Math.random() * 18}px`,
-  }));
+import { useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
+import { QRCodeCanvas } from 'qrcode.react';
+import { supabase } from '../lib/supabaseClient';
+import { useAuth } from '../context/useAuth';
 
 export default function CreateEventPage() {
   const { user } = useAuth();
-
-  const [snowflakes] = useState(generateSnowflakes);
-  const [title, setTitle] = useState("");
-  const [names, setNames] = useState("");
-  const [expiresAt, setExpiresAt] = useState("");
-  const [eventLink, setEventLink] = useState("");
+  const [title, setTitle] = useState('');
+  const [names, setNames] = useState('');
+  const [expiresAt, setExpiresAt] = useState('');
+  const [eventLink, setEventLink] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  if (!user) {
-    return (
-      <div className="auth-root">
-        <div className="auth-box text-center">
-          <p className="text-white">
-            Please log in to create events.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  const createEvent = async () => {
-    setError("");
-
-    if (!title.trim()) {
-      setError("Event title is required");
-      return;
-    }
-
-    const participantList = names
-      .split("\n")
-      .map((n) => n.trim())
-      .filter(Boolean);
-
-    if (participantList.length < 2) {
-      setError("At least 2 participants are required");
-      return;
-    }
-
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const participantList = names.split('\n').map(n => n.trim()).filter(Boolean);
+  const createEvent = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!user || loading) return;
+    setError('');
+    if (participantList.length < 2) return setError('Add at least two participants.');
+    if (new Set(participantList.map(n => n.toLocaleLowerCase())).size !== participantList.length) return setError('Each participant needs a unique name. Add a surname or initial for names that repeat.');
+    if (expiresAt && new Date(expiresAt).getTime() <= Date.now()) return setError('Choose an expiration date in the future.');
+    setLoading(true);
     try {
-      setLoading(true);
-
-      const { data: event, error } = await supabase
-        .from("events")
-        .insert({
-          title,
-          created_by: user.id,
-          expires_at: expiresAt || null,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      const participants = participantList.map((name) => ({
-        event_id: event.id,
-        name,
-      }));
-
-      const { error: pError } = await supabase
-        .from("participants")
-        .insert(participants);
-
-      if (pError) throw pError;
-
+      const { data: event, error: eventError } = await supabase.from('events').insert({ title: title.trim(), created_by: user.id, expires_at: expiresAt ? new Date(expiresAt).toISOString() : null }).select('id').single();
+      if (eventError) throw eventError;
+      const { error: participantsError } = await supabase.from('participants').insert(participantList.map(name => ({ event_id: event.id, name })));
+      if (participantsError) {
+        const { error: cleanupError } = await supabase.from('events').delete().eq('id', event.id);
+        if (cleanupError) throw new Error('Participants could not be saved. An empty event remains in My events.');
+        throw participantsError;
+      }
       setEventLink(`${window.location.origin}/event/${event.id}`);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to create event"
-      );
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not create your event. Please try again.'); }
+    finally { setLoading(false); }
   };
-
-  return (
-    <div className="auth-root">
-      {/* ❄ Snowflakes */}
-      {snowflakes.map((flake, i) => (
-        <div
-          key={i}
-          className="snowflake"
-          style={{
-            left: flake.left,
-            fontSize: flake.size,
-            animationDuration: flake.duration,
-            animationDelay: flake.delay,
-          }}
-        >
-          ❄
-        </div>
-      ))}
-
-      {/* 🎁 Create Event Card */}
-      <div className="auth-box">
-        <h2 className="auth-title">🎁 Create Secret Santa Event</h2>
-
-        {error && <p className="auth-error">{error}</p>}
-
-        {!eventLink && (
-          <div className="auth-form">
-            <div className="auth-field">
-              <label>Event Title</label>
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Christmas Party 2025"
-              />
-            </div>
-
-            <div className="auth-field">
-              <label>Expiration Date (optional)</label>
-              <input
-                type="datetime-local"
-                value={expiresAt}
-                onChange={(e) => setExpiresAt(e.target.value)}
-              />
-            </div>
-
-            <div className="auth-field">
-              <label>Participants (one per line)</label>
-              <textarea
-                rows={5}
-                value={names}
-                onChange={(e) => setNames(e.target.value)}
-                placeholder={`Delson\nJames\nHazel\nAira`}
-              />
-            </div>
-
-            <button
-              className="auth-button"
-              onClick={createEvent}
-              disabled={loading}
-            >
-              {loading ? "Creating…" : "🎄 Create Event"}
-            </button>
-          </div>
-        )}
-
-{eventLink && (
-  <div
-    style={{
-      marginTop: 20,
-      padding: "16px",
-      borderRadius: "14px",
-      background: "rgba(0,0,0,0.45)",
-      border: "1px solid rgba(255,255,255,0.18)",
-    }}
-  >
-    <h4 className="text-white fw-bold mb-2">
-      🎉 Event Created Successfully!
-    </h4>
-
-    <p className="text-white-50 small mb-3">
-      Share this link with participants
-    </p>
-
-    {/* 🔗 LINK BOX */}
-    <div
-      style={{
-        padding: "10px 12px",
-        borderRadius: "10px",
-        background: "rgba(255,255,255,0.08)",
-        border: "1px solid rgba(255,255,255,0.2)",
-        marginBottom: 14,
-        wordBreak: "break-all",
-      }}
-    >
-      <a
-        href={eventLink}
-        target="_blank"
-        rel="noreferrer"
-        style={{
-          color: "#93c5fd",
-          fontSize: "0.85rem",
-          fontWeight: 500,
-          textDecoration: "none",
-        }}
-      >
-        {eventLink}
-      </a>
-    </div>
-
-    {/* 📋 COPY BUTTON */}
-    <button
-      className="auth-button"
-      style={{
-        height: 40,
-        fontSize: "0.85rem",
-        marginBottom: 16,
-      }}
-      onClick={() => {
-        navigator.clipboard.writeText(eventLink);
-        alert("Link copied!");
-      }}
-    >
-      📋 Copy Link
-    </button>
-
-    {/* 📷 QR SECTION */}
-    <div
-      style={{
-        marginTop: 12,
-        padding: 14,
-        borderRadius: 12,
-        background: "#ffffff",
-        display: "inline-block",
-      }}
-    >
-      <QRCodeCanvas
-        value={eventLink}
-        size={180}
-        bgColor="#ffffff"
-        fgColor="#111827"
-      />
-    </div>
-
-    <p
-      style={{
-        marginTop: 10,
-        fontSize: "0.8rem",
-        color: "#c7d2fe",
-      }}
-    >
-      📱 Scan the QR code to join
-    </p>
-  </div>
-)}
-      </div>
-    </div>
-  );
+  const copyLink = async () => {
+    try { await navigator.clipboard.writeText(eventLink); setNotice('Event link copied!'); }
+    catch { setNotice('Copy is unavailable. Select and copy the link below.'); }
+  };
+  return <main className="auth-root"><section className="auth-box" style={{ maxWidth: 620 }}>
+    <p className="eyebrow">A little mystery. A lot of joy.</p>
+    <h1 className="auth-title">Bring your people together 🎁</h1>
+    <p className="intro">Create a Monito Monita exchange, invite your group, and let the surprises begin.</p>
+    {error && <p className="auth-error" role="alert">{error}</p>}
+    {!eventLink ? <form className="auth-form" onSubmit={createEvent}>
+      <div className="auth-field"><label htmlFor="title">What’s the occasion?</label><input id="title" required maxLength={120} value={title} onChange={e => setTitle(e.target.value)} placeholder="The Tubiera family gift exchange" /></div>
+      <div className="auth-field"><label htmlFor="expires">Link expiration <span className="helper">(optional)</span></label><input id="expires" type="datetime-local" value={expiresAt} onChange={e => setExpiresAt(e.target.value)} /><p className="helper">Uses your local time. Leave empty to keep the event open.</p></div>
+      <div className="auth-field"><label htmlFor="names">Who’s joining? <span className="badge">{participantList.length} participants</span></label><textarea id="names" required rows={6} value={names} onChange={e => setNames(e.target.value)} placeholder={'Delson\nJames\nHazel\nAira'} aria-describedby="names-help" /><p id="names-help" className="helper">One unique name per line. You’ll run the draw from My events.</p></div>
+      <button className="auth-button" disabled={loading}>{loading ? 'Creating your event…' : 'Create gift exchange →'}</button>
+    </form> : <div><p className="notice" role="status">Your exchange is ready! Run the draw in My events before participants reveal their recipients.</p><div className="qr"><QRCodeCanvas value={eventLink} size={180} marginSize={2} title="Scan to open the event" /></div><p><a href={eventLink}>{eventLink}</a></p><div className="actions"><button className="auth-button" onClick={copyLink}>Copy invite link</button><Link className="button secondary" to="/admin">Go to My events</Link></div><p role="status">{notice}</p><button className="auth-switch" onClick={() => { setEventLink(''); setNotice(''); setTitle(''); setNames(''); setExpiresAt(''); }}>Create another exchange</button></div>}
+  </section></main>;
 }

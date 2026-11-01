@@ -21,6 +21,8 @@ export default function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   // 🔐 Redirect logged-in users away from login page
@@ -32,6 +34,8 @@ export default function AuthPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (busy) return;
+    setBusy(true);
     setError("");
 
     try {
@@ -44,6 +48,8 @@ export default function AuthPage() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Authentication failed");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -67,16 +73,20 @@ export default function AuthPage() {
 
       {/* 🎄 Auth Card */}
       <div className="auth-box">
+        <p className="eyebrow">Monito Monita · Share the joy</p>
         <h2 className="auth-title">
           {mode === "login" ? "Welcome Back 🎄" : "Join Secret Santa 🎁"}
         </h2>
 
-        {error && <p className="auth-error">{error}</p>}
+        <p className="intro">A thoughtful gift starts with a little mystery. Plan your next gift exchange in minutes.</p>
+        {error && <p className="auth-error" role="alert">{error}</p>}
 
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="auth-field">
-            <label>Email</label>
+            <label htmlFor="email">Email</label>
             <input
+              id="email"
+              autoComplete="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -86,23 +96,28 @@ export default function AuthPage() {
           </div>
 
           <div className="auth-field">
-            <label>Password</label>
+            <label htmlFor="password">Password</label>
             <input
-              type="password"
+              id="password"
+              type={showPassword ? "text" : "password"}
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
+              minLength={mode === "register" ? 6 : undefined}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
               required
             />
           </div>
+          <button type="button" className="auth-switch" aria-pressed={showPassword} onClick={() => setShowPassword(!showPassword)}>{showPassword ? "Hide password" : "Show password"}</button>
 
-          <button type="submit" className="auth-button">
-            {mode === "login" ? "Login" : "Register"}
+          <button type="submit" className="auth-button" disabled={busy}>
+            {busy ? "Please wait…" : mode === "login" ? "Sign in →" : "Create account →"}
           </button>
         </form>
 
         <button
           className="auth-switch"
+          disabled={busy}
           onClick={() =>
             setMode(mode === "login" ? "register" : "login")
           }
@@ -116,7 +131,7 @@ export default function AuthPage() {
       {/* ✅ CONFIRM EMAIL MODAL */}
       {showConfirmModal && (
         <div className="confirm-overlay">
-          <div className="confirm-modal">
+          <div className="confirm-modal" role="dialog" aria-modal="true" aria-label="Confirm your email">
             <h3>📩 Confirm your email</h3>
             <p>
               We’ve sent a confirmation link to <b>{email}</b>.
